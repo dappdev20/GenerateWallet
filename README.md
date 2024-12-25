@@ -1,0 +1,2 @@
+# GenerateWallet
+ Generate Solana wallets
