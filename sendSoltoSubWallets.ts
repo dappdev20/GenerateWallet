@@ -48,7 +48,7 @@ export const sendSolsToSubWallets = async () => {
                         SystemProgram.transfer({
                             fromPubkey: mainWallet.publicKey,
                             toPubkey: subWallet.publicKey,
-                            lamports: 0.002 * LAMPORTS_PER_SOL,
+                            lamports: 0.001 * LAMPORTS_PER_SOL,
                         })
                     );
                 }
@@ -65,7 +65,7 @@ export const sendSolsToSubWallets = async () => {
                 // console.log("res", res);
                 await createAndSendBundleEx(connection, mainWallet, [tx]);
             }
-
+            console.log('Step = ', idx);
             idx += 10;
         }
 
@@ -227,7 +227,7 @@ const checkBundle = async (uuid: any) => {
             }
 
         } catch (error) {
-            console.log('Check Bundle Failed', error);
+            // console.log('Check Bundle Failed', error);
         }
 
         await sleep(1000);
