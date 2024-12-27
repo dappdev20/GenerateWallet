@@ -437,13 +437,13 @@ export const sellTokens = async () => {
             subWallets.push(sender);
             pubKeys.push(sender.publicKey);
         }
-        // const lookupTableAddress = await createTokenAccountTx(
-        //     connection,
-        //     mainWallet,
-        //     pubKeys
-        // );
+        const lookupTableAddress = await createTokenAccountTx(
+            connection,
+            mainWallet,
+            pubKeys
+        );
 
-        const lookupTableAddress = new PublicKey("9gNHkbJFaoa2eqhpi3JevhaK3H4Z2DJzh55YS17ui5bB")
+        // const lookupTableAddress = new PublicKey("9gNHkbJFaoa2eqhpi3JevhaK3H4Z2DJzh55YS17ui5bB")
 
         const confirmed = await transferTokensToMainWallet(mintAddress, receiverAddress, subWallets, lookupTableAddress);
         console.log('Successfully transferred tokens...');
