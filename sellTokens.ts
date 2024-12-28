@@ -594,6 +594,10 @@ export const sellTokens = async () => {
             const public_key = keyArray[i].public_key;
             const private_key = keyArray[i].private_key;
             const sender = Keypair.fromSecretKey(bs58.decode(private_key));
+            if (isInValidKeyPair(sender)) {
+                console.log("Invalid keypair, so can't send bundle transaction");
+                continue;
+            }
             subWallets.push(sender);
             pubKeys.push(sender.publicKey);
         }
