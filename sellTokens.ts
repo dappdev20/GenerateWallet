@@ -38,6 +38,7 @@ import { AnchorProvider, Program, web3, Wallet } from '@project-serum/anchor';
 import { IDL } from './IDL';
 import { Idl } from "@coral-xyz/anchor";
 import { isInValidKeyPair } from '@web3utils/common';
+import { exit } from "process";
 
 dotenv.config();
 
@@ -134,7 +135,7 @@ export const createTokenAccountTx = async (
 
     const tx = await makeVersionedTransactions(connection, mainWallet, instructions);
 
-    await createAndSendBundleEx(connection, mainWallet, [tx], [], []);
+    await createAndSendBundleEx(connection, mainWallet, [tx]);
 
     return lookupTableAddress;
 }
@@ -182,20 +183,70 @@ export const makeVersionedTransactionsWithMultiSign = async (
     return versionedTransaction;
 };
 
-export const createAndSendBundleEx = async (connection: Connection, payer: Keypair, bundleTransactions: VersionedTransaction[], chunkInstructions: TransactionInstruction[], lastChunkSigners: Keypair[]) => {
+export const createAndSendBundleEx = async (connection: Connection, payer: Keypair, bundleTransactions: VersionedTransaction[]) => {
     try {
 
-        const tipTx = await getTipVesionedTransaction(connection, payer.publicKey, Number(process.env.JITO_BUNDLE_TIP), chunkInstructions);
+        const tipTx = await getTipVesionedTransaction(connection, payer.publicKey, Number(process.env.JITO_BUNDLE_TIP));
+
+        if (!tipTx) {
+            return false;
+        }
+
+        tipTx.sign([payer]);
+
+        if (bundleTransactions.length > 4) {
+            bundleTransactions.pop();
+            console.log('Remove last bundle trx');
+        }
+
+        bundleTransactions.push(tipTx);
+
+        const rawTxns = bundleTransactions.map(item => bs58.encode(item.serialize()));
+
+        const { data: bundleRes } = await axios.post(`https://frankfurt.mainnet.block-engine.jito.wtf/api/v1/bundles`,
+            {
+                jsonrpc: "2.0",
+                id: 1,
+                method: "sendBundle",
+                params: [
+                    rawTxns
+                ],
+            },
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            }
+        );
+
+        if (!bundleRes) {
+            return false;
+        }
+
+        const bundleUUID = bundleRes.result;
+        console.log("Bundle sent.");
+        console.log("Bundle UUID:", bundleUUID);
+
+        const res = await checkBundle(connection, bundleUUID, bundleTransactions);
+
+        return res;
+    } catch (error) {
+        console.error("Error creating and sending bundle.", error);
+    }
+    return false;
+};
+
+export const createAndSendBundleWithSellEx = async (connection: Connection, payer: Keypair, bundleTransactions: VersionedTransaction[], chunkInstructions: TransactionInstruction[], lastChunkSigners: Keypair[]) => {
+    try {
+
+        const tipTx = await getTipVesionedTransactionWithSell(connection, payer.publicKey, Number(process.env.JITO_BUNDLE_TIP), chunkInstructions);
 
         if (!tipTx) {
             return false;
         }
 
         const mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.mainWalletPrivate as string));
-        if (chunkInstructions.length > 0)
-            tipTx.sign([payer, ...lastChunkSigners, mainWallet]);
-        else
-            tipTx.sign([payer]);
+        tipTx.sign([payer, ...lastChunkSigners, mainWallet]);
 
         if (bundleTransactions.length > 4) {
             bundleTransactions.pop();
@@ -288,6 +339,27 @@ const checkBundle = async (connection: Connection, uuid: any, bundleTransactions
 export async function getTipVesionedTransaction(
     connection: Connection,
     ownerPubkey: PublicKey,
+    tip: number
+) {
+    const instruction = await getTipInstruction(ownerPubkey, tip);
+
+    if (!instruction) {
+        return null;
+    }
+
+    const recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    const messageV0 = new TransactionMessage({
+        payerKey: ownerPubkey,
+        recentBlockhash: recentBlockhash,
+        instructions: [instruction]
+    }).compileToV0Message();
+
+    return new VersionedTransaction(messageV0);
+}
+
+export async function getTipVesionedTransactionWithSell(
+    connection: Connection,
+    ownerPubkey: PublicKey,
     tip: number,
     chunkInstructions: TransactionInstruction[]
 ) {
@@ -299,26 +371,18 @@ export async function getTipVesionedTransaction(
 
     const recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     let messageV0;
-    if (chunkInstructions.length > 0) {
-        const mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.mainWalletPrivate as string));
-        const mintAddress: string = process.env.tokenAddress || "";
-        const sellTokenBalance = await getTokenBalance(connection, mintAddress, mainWallet.publicKey, true);
-        console.log('Sell Token Balance = ', sellTokenBalance);
-        totalTokenAmount += sellTokenBalance;
-        console.log('Total Sell Token Balance = ', totalTokenAmount);
-        const sellPumpfunInstrunction: TransactionInstruction[] = await sellPumpfunToken(connection, mainWallet, new PublicKey(mintAddress), totalTokenAmount, 0) ?? [];
-        messageV0 = new TransactionMessage({
-            payerKey: ownerPubkey,
-            recentBlockhash: recentBlockhash,
-            instructions: [instruction, ...chunkInstructions, ...sellPumpfunInstrunction],
-        }).compileToV0Message();
-    } else {
-        messageV0 = new TransactionMessage({
-            payerKey: ownerPubkey,
-            recentBlockhash: recentBlockhash,
-            instructions: [instruction],
-        }).compileToV0Message();
-    }
+    const mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.mainWalletPrivate as string));
+    const mintAddress: string = process.env.tokenAddress || "";
+    const sellTokenBalance = await getTokenBalance(connection, mintAddress, mainWallet.publicKey, true);
+    console.log('Sell Token Balance = ', sellTokenBalance);
+    totalTokenAmount += sellTokenBalance;
+    console.log('Total Sell Token Balance = ', totalTokenAmount);
+    const sellPumpfunInstrunction: TransactionInstruction[] = await sellPumpfunToken(connection, mainWallet, new PublicKey(mintAddress), totalTokenAmount, 0) ?? [];
+    messageV0 = new TransactionMessage({
+        payerKey: ownerPubkey,
+        recentBlockhash: recentBlockhash,
+        instructions: [instruction, ...chunkInstructions, ...sellPumpfunInstrunction],
+    }).compileToV0Message();
 
     return new VersionedTransaction(messageV0);
 }
@@ -457,7 +521,7 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
         transaction.sign(chunkSigners);
         bundleTrxs.push(transaction);
     }
-    const confirmed = await createAndSendBundleEx(connection, buyerWallets[0], bundleTrxs, lastChunkInstructions, lastChunkSigners);
+    const confirmed = await createAndSendBundleWithSellEx(connection, buyerWallets[0], bundleTrxs, lastChunkInstructions, lastChunkSigners);
     return confirmed;
 }
 
@@ -543,6 +607,7 @@ export const sellTokens = async () => {
 
         const confirmed = await transferTokensToMainWallet(mintAddress, receiverAddress, subWallets, lookupTableAddress);
         console.log('Successfully transferred tokens and sold tokens with sols...');
+        exit();
         // if (confirmed) {
         //     const sellTokenBalance = await getTokenBalance(connection, mintAddress, receiverAddress, true);
         //     console.log('Sell Token Balance = ', sellTokenBalance);
