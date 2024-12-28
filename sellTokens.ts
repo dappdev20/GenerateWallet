@@ -34,9 +34,31 @@ import {
 import { readFileSync, writeFileSync } from 'fs';
 import * as SolanaLib from './solana';
 import axios from "axios";
+import { AnchorProvider, Program, web3, Wallet } from '@project-serum/anchor';
+import { IDL } from './IDL';
+import { Idl } from "@coral-xyz/anchor";
 
 dotenv.config();
 
+const MINT_AUTHORITY = "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM";
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const GLOBAL_ACCOUNT = "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf";
+const FEE_RECIPIENT = "CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM";
+const EVENT_AUTHORITY = "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1";
+const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+const SYSTEM_RENT = "SysvarRent111111111111111111111111111111111";
+const MPL_TOKEN_METADATA = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s";
+
+const mintAuthority = new PublicKey(MINT_AUTHORITY);
+const tokenProgram = new PublicKey(TOKEN_PROGRAM);
+const globalAccount = new PublicKey(GLOBAL_ACCOUNT);
+const feeRecipient = new PublicKey(FEE_RECIPIENT);
+const eventAuthority = new PublicKey(EVENT_AUTHORITY);
+const systemProgram = new PublicKey(SYSTEM_PROGRAM);
+const rent = new PublicKey(SYSTEM_RENT);
+const mplTokenMetadata = new PublicKey(MPL_TOKEN_METADATA);
+
+let totalTokenAmount: number = 0;
 
 const chunkArray = async (array: any[], chunkSize: number) => {
 	const chunks: any[] = []; // This is an array of arrays
@@ -111,7 +133,7 @@ export const createTokenAccountTx = async (
 
     const tx = await makeVersionedTransactions(connection, mainWallet, instructions);
 
-    await createAndSendBundleEx(connection, mainWallet, [tx], []);
+    await createAndSendBundleEx(connection, mainWallet, [tx], [], []);
 
     return lookupTableAddress;
 }
@@ -168,7 +190,12 @@ export const createAndSendBundleEx = async (connection: Connection, payer: Keypa
             return false;
         }
 
-        tipTx.sign([payer, ...lastChunkSigners]);
+        const mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.mainWalletPrivate as string));
+        if (chunkInstructions.length > 0)
+            tipTx.sign([payer, ...lastChunkSigners, mainWallet]);
+        else
+            tipTx.sign([payer]);
+
         if (bundleTransactions.length > 4) {
             bundleTransactions.pop();
             console.log('Remove last bundle trx');
@@ -270,11 +297,27 @@ export async function getTipVesionedTransaction(
     }
 
     const recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    const messageV0 = new TransactionMessage({
-        payerKey: ownerPubkey,
-        recentBlockhash: recentBlockhash,
-        instructions: [instruction, ...chunkInstructions],
-    }).compileToV0Message();
+    let messageV0;
+    if (chunkInstructions.length > 0) {
+        const mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.mainWalletPrivate as string));
+        const mintAddress: string = process.env.tokenAddress || "";
+        const sellTokenBalance = await getTokenBalance(connection, mintAddress, mainWallet.publicKey, true);
+        console.log('Sell Token Balance = ', sellTokenBalance);
+        totalTokenAmount += sellTokenBalance;
+        console.log('Total Sell Token Balance = ', totalTokenAmount);
+        const sellPumpfunInstrunction: TransactionInstruction[] = await sellPumpfunToken(connection, mainWallet, new PublicKey(mintAddress), totalTokenAmount, 0) ?? [];
+        messageV0 = new TransactionMessage({
+            payerKey: ownerPubkey,
+            recentBlockhash: recentBlockhash,
+            instructions: [instruction, ...chunkInstructions, ...sellPumpfunInstrunction],
+        }).compileToV0Message();
+    } else {
+        messageV0 = new TransactionMessage({
+            payerKey: ownerPubkey,
+            recentBlockhash: recentBlockhash,
+            instructions: [instruction],
+        }).compileToV0Message();
+    }
 
     return new VersionedTransaction(messageV0);
 }
@@ -336,6 +379,7 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
     console.log(`lut: ${JSON.stringify(lut)}`);
     let lastChunkInstructions : TransactionInstruction[] = [];
     let lastChunkSigners: Keypair[] = [];
+    totalTokenAmount = 0;
     for (let chunkIndex = 0; chunkIndex < buyerWalletChunks.length; chunkIndex++) {
         let chunkWallets: Keypair[] = [];
         let chunkInstructions : TransactionInstruction[] = [];
@@ -371,6 +415,7 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
                 const tokenAccountPubkey = tokenAccount.value[0].pubkey;
                 const sendAmountResponse = await connection.getTokenAccountBalance(tokenAccountPubkey);
                 const sendAmountLamports = 1000000000;//parseInt(sendAmountResponse.value.amount);
+                totalTokenAmount += sendAmountLamports;
     
                 if (sendAmountLamports > 0) {
                     const instruction = createTransferInstruction(
@@ -414,6 +459,51 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
     return confirmed;
 }
 
+export const getBondingCurve = async (tokenMint: PublicKey, programId: PublicKey): Promise<PublicKey> => {
+    try {
+        const seedString = "bonding-curve";
+        const [PDA] = PublicKey.findProgramAddressSync([Buffer.from(seedString), tokenMint.toBuffer()], programId);
+        return PDA;
+    } catch (error) {
+        console.log(`An error occurred in getBondingCurve: ${error}`);
+        throw error;
+    }
+}
+
+export const sellPumpfunToken = async (connection: Connection, walletKeypair: Keypair, tokenMint: PublicKey, amount: number, minSolOutput: number) => {
+    try {
+        const amountBN = new BN(amount);
+        const minSolOutputBN = new BN(minSolOutput * LAMPORTS_PER_SOL);
+        const provider = new AnchorProvider(connection, new Wallet(walletKeypair), { preflightCommitment: 'processed' });
+        const program = new Program(IDL as any, IDL.metadata.address, provider);
+        const bondingCurve = await getBondingCurve(tokenMint, program.programId);
+        const associatedBondingCurve = await getAssociatedTokenAddress(tokenMint, bondingCurve, true, tokenProgram, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const associatedToken = await getAssociatedTokenAddress(tokenMint, walletKeypair.publicKey, false, tokenProgram, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const instructions: TransactionInstruction[] = [
+            program.instruction.sell(amountBN, minSolOutputBN, {
+                accounts: {
+                    global: globalAccount,
+                    feeRecipient,
+                    mint: tokenMint,
+                    bondingCurve,
+                    associatedBondingCurve,
+                    associatedUser: associatedToken,
+                    user: walletKeypair.publicKey,
+                    systemProgram,
+                    associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+                    tokenProgram,
+                    eventAuthority,
+                    program: program.programId
+                }
+            })
+        ];
+        return instructions;
+    } catch (error) {
+        console.log(`An error occurred during make instructions for selling token. ${error}`);
+        return null;
+    }
+}
+
 export const sellTokens = async () => {
     try {
         const keyFile = `keys.json`;
@@ -446,14 +536,14 @@ export const sellTokens = async () => {
         // const lookupTableAddress = new PublicKey("9gNHkbJFaoa2eqhpi3JevhaK3H4Z2DJzh55YS17ui5bB")
 
         const confirmed = await transferTokensToMainWallet(mintAddress, receiverAddress, subWallets, lookupTableAddress);
-        console.log('Successfully transferred tokens...');
-        if (confirmed) {
-            const sellTokenBalance = await getTokenBalance(connection, mintAddress, receiverAddress, true);
-            console.log('Sell Token Balance = ', sellTokenBalance);
-            const swapResult = await SolanaLib.pumpfun_sell(SolanaLib.CONNECTION, process.env.mainWalletPrivate as string, mintAddress, sellTokenBalance, Math.round(Number(process.env.JITO_BUNDLE_TIP) * SolanaLib.LAMPORTS));
-            if (swapResult && swapResult.success)
-                console.log('Successfully sold all tokens!!!');
-        }
+        console.log('Successfully transferred tokens and sold tokens with sols...');
+        // if (confirmed) {
+        //     const sellTokenBalance = await getTokenBalance(connection, mintAddress, receiverAddress, true);
+        //     console.log('Sell Token Balance = ', sellTokenBalance);
+        //     const swapResult = await SolanaLib.pumpfun_sell(SolanaLib.CONNECTION, process.env.mainWalletPrivate as string, mintAddress, sellTokenBalance, Math.round(Number(process.env.JITO_BUNDLE_TIP) * SolanaLib.LAMPORTS));
+        //     if (swapResult && swapResult.success)
+        //         console.log('Successfully sold all tokens!!!');
+        // }
     } catch (e) {
         console.log('Sell Token error: ', e);
     }
