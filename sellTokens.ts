@@ -37,6 +37,7 @@ import axios from "axios";
 import { AnchorProvider, Program, web3, Wallet } from '@project-serum/anchor';
 import { IDL } from './IDL';
 import { Idl } from "@coral-xyz/anchor";
+import { isInValidKeyPair } from '@web3utils/common';
 
 dotenv.config();
 
@@ -61,11 +62,11 @@ const mplTokenMetadata = new PublicKey(MPL_TOKEN_METADATA);
 let totalTokenAmount: number = 0;
 
 const chunkArray = async (array: any[], chunkSize: number) => {
-	const chunks: any[] = []; // This is an array of arrays
-	for (let i = 0; i < array.length; i += chunkSize) {
-		chunks.push(array.slice(i, i + chunkSize));
-	}
-	return chunks;
+    const chunks: any[] = []; // This is an array of arrays
+    for (let i = 0; i < array.length; i += chunkSize) {
+        chunks.push(array.slice(i, i + chunkSize));
+    }
+    return chunks;
 };
 
 export const networkName = process.env.SOLANA_RPC_URL || "mainnet";
@@ -181,7 +182,7 @@ export const makeVersionedTransactionsWithMultiSign = async (
     return versionedTransaction;
 };
 
-export const createAndSendBundleEx = async (connection: Connection, payer: Keypair, bundleTransactions: VersionedTransaction[], chunkInstructions : TransactionInstruction[], lastChunkSigners: Keypair[]) => {
+export const createAndSendBundleEx = async (connection: Connection, payer: Keypair, bundleTransactions: VersionedTransaction[], chunkInstructions: TransactionInstruction[], lastChunkSigners: Keypair[]) => {
     try {
 
         const tipTx = await getTipVesionedTransaction(connection, payer.publicKey, Number(process.env.JITO_BUNDLE_TIP), chunkInstructions);
@@ -200,7 +201,7 @@ export const createAndSendBundleEx = async (connection: Connection, payer: Keypa
             bundleTransactions.pop();
             console.log('Remove last bundle trx');
         }
-            
+
         bundleTransactions.push(tipTx);
 
         const rawTxns = bundleTransactions.map(item => bs58.encode(item.serialize()));
@@ -288,7 +289,7 @@ export async function getTipVesionedTransaction(
     connection: Connection,
     ownerPubkey: PublicKey,
     tip: number,
-    chunkInstructions : TransactionInstruction[]
+    chunkInstructions: TransactionInstruction[]
 ) {
     const instruction = await getTipInstruction(ownerPubkey, tip);
 
@@ -377,16 +378,16 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
     ).value;
 
     console.log(`lut: ${JSON.stringify(lut)}`);
-    let lastChunkInstructions : TransactionInstruction[] = [];
+    let lastChunkInstructions: TransactionInstruction[] = [];
     let lastChunkSigners: Keypair[] = [];
     totalTokenAmount = 0;
     for (let chunkIndex = 0; chunkIndex < buyerWalletChunks.length; chunkIndex++) {
         let chunkWallets: Keypair[] = [];
-        let chunkInstructions : TransactionInstruction[] = [];
+        let chunkInstructions: TransactionInstruction[] = [];
         let chunkSigners: Keypair[] = [];
         chunkWallets.push(...buyerWalletChunks[chunkIndex]);
 
-        if(chunkIndex === 0) {
+        if (chunkIndex === 0) {
             if (recATA.value.length === 0) {
                 console.log('Creating token account for main wallet.');
                 const createTokenAccountInst = createAssociatedTokenAccountInstruction(
@@ -411,12 +412,13 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
                     console.error('No token account found for this wallet, skipping.');
                     continue;
                 }
-    
+
                 const tokenAccountPubkey = tokenAccount.value[0].pubkey;
                 const sendAmountResponse = await connection.getTokenAccountBalance(tokenAccountPubkey);
-                const sendAmountLamports = 1000000000;//parseInt(sendAmountResponse.value.amount);
+                // const sendAmountLamports = 1000000000;//parseInt(sendAmountResponse.value.amount);
+                const sendAmountLamports = parseInt(sendAmountResponse.value.amount);
                 totalTokenAmount += sendAmountLamports;
-    
+
                 if (sendAmountLamports > 0) {
                     const instruction = createTransferInstruction(
                         tokenAccountPubkey,
@@ -451,7 +453,7 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
             recentBlockhash: latestBlockhash.blockhash,
             instructions: chunkInstructions,
         }).compileToV0Message(lookupTableAccount ? [lookupTableAccount] : []));
-    
+
         transaction.sign(chunkSigners);
         bundleTrxs.push(transaction);
     }
@@ -519,6 +521,10 @@ export const sellTokens = async () => {
         let mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(keyArray[0].private_key));
         let subWallets: Keypair[] = [];
         let pubKeys: PublicKey[] = [];
+        if (isInValidKeyPair(mainWallet)) {
+            console.log("Invalid keypair, so can't send bundle transaction");
+            return;
+        }
         // Get Token Balance in each wallet
         for (let i = 0; i < keyArray.length; i++) {
             const public_key = keyArray[i].public_key;
