@@ -479,9 +479,10 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
 
                 const tokenAccountPubkey = tokenAccount.value[0].pubkey;
                 const sendAmountResponse = await connection.getTokenAccountBalance(tokenAccountPubkey);
+                const solAmount = await connection.getBalance(tokenAccountPubkey);
                 // const sendAmountLamports = 1000000000;//parseInt(sendAmountResponse.value.amount);
                 const sendAmountLamports = parseInt(sendAmountResponse.value.amount);
-                if (sendAmountLamports === 0) {
+                if (Number(sendAmountLamports) === 0 || Number(solAmount) === 0) {
                     console.log('No token Balance in ', owner);
                     continue;
                 }
