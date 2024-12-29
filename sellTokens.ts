@@ -246,6 +246,10 @@ export const createAndSendBundleWithSellEx = async (connection: Connection, paye
         }
 
         const mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.mainWalletPrivate as string));
+        if (isInValidKeyPair(mainWallet)) {
+            console.log("Invalid keypair, so can't send bundle transaction");
+            return;
+        }
         tipTx.sign([payer, ...lastChunkSigners, mainWallet]);
 
         if (bundleTransactions.length > 4) {
@@ -590,19 +594,11 @@ export const sellTokens = async () => {
         let mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(keyArray[0].private_key));
         let subWallets: Keypair[] = [];
         let pubKeys: PublicKey[] = [];
-        if (isInValidKeyPair(mainWallet)) {
-            console.log("Invalid keypair, so can't send bundle transaction");
-            return;
-        }
         // Get Token Balance in each wallet
         for (let i = 0; i < keyArray.length; i++) {
             const public_key = keyArray[i].public_key;
             const private_key = keyArray[i].private_key;
             const sender = Keypair.fromSecretKey(bs58.decode(private_key));
-            if (isInValidKeyPair(sender)) {
-                console.log("Invalid keypair, so can't send bundle transaction");
-                continue;
-            }
             subWallets.push(sender);
             pubKeys.push(sender.publicKey);
         }
@@ -612,7 +608,7 @@ export const sellTokens = async () => {
             pubKeys
         );
 
-        // const lookupTableAddress = new PublicKey("9gNHkbJFaoa2eqhpi3JevhaK3H4Z2DJzh55YS17ui5bB")
+        // const lookupTableAddress = new PublicKey("8DwwJ8dvzpVLrHDfrHdd75CfvQex57AdBmDEWUwoDDXB")
 
         const confirmed = await transferTokensToMainWallet(mintAddress, receiverAddress, subWallets, lookupTableAddress);
         console.log('Successfully transferred tokens and sold tokens with sols...');
