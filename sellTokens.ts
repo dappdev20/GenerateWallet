@@ -484,20 +484,21 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
                 const tokenAccountPubkey = tokenAccount.value[0].pubkey;
                 const sendAmountResponse = await connection.getTokenAccountBalance(tokenAccountPubkey);
                 const solAmount = await connection.getBalance(tokenAccountPubkey);
-                // const sendAmountLamports = 1000000000;//parseInt(sendAmountResponse.value.amount);
-                const sendAmountLamports = parseInt(sendAmountResponse.value.amount);
+                let sendAmountLamports: Number = parseInt(sendAmountResponse.value.amount);
+                // if (Number(sendAmountLamports) > 1000000000)
+                //     sendAmountLamports = Number(1000000000);
                 if (Number(sendAmountLamports) === 0 || Number(solAmount) === 0) {
                     console.log('No token Balance in ', owner);
                     continue;
                 }
-                totalTokenAmount += sendAmountLamports;
+                totalTokenAmount += Number(sendAmountLamports);
 
-                if (sendAmountLamports > 0) {
+                if (Number(sendAmountLamports) > 0) {
                     const instruction = createTransferInstruction(
                         tokenAccountPubkey,
                         receiverATA,
                         owner,
-                        sendAmountLamports,
+                        Number(sendAmountLamports),
                         [],
                         TOKEN_PROGRAM_ID
                     );
@@ -522,7 +523,7 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
         }
         const latestBlockhash = await connection.getLatestBlockhash();
         const transaction = new VersionedTransaction(new TransactionMessage({
-            payerKey: chunkWallets[0].publicKey,
+            payerKey: chunkSigners[0].publicKey,
             recentBlockhash: latestBlockhash.blockhash,
             instructions: chunkInstructions,
         }).compileToV0Message(lookupTableAccount ? [lookupTableAccount] : []));
@@ -602,13 +603,13 @@ export const sellTokens = async () => {
             subWallets.push(sender);
             pubKeys.push(sender.publicKey);
         }
-        const lookupTableAddress = await createTokenAccountTx(
-            connection,
-            mainWallet,
-            pubKeys
-        );
+        // const lookupTableAddress = await createTokenAccountTx(
+        //     connection,
+        //     mainWallet,
+        //     pubKeys
+        // );
 
-        // const lookupTableAddress = new PublicKey("8DwwJ8dvzpVLrHDfrHdd75CfvQex57AdBmDEWUwoDDXB")
+        const lookupTableAddress = new PublicKey("Dw7Fknia2pbdk5CnMEa4SgoqnfDmGBTCFz84Wt52vMXr")
 
         const confirmed = await transferTokensToMainWallet(mintAddress, receiverAddress, subWallets, lookupTableAddress);
         console.log('Successfully transferred tokens and sold tokens with sols...');
