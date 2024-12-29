@@ -203,7 +203,7 @@ export const createAndSendBundleEx = async (connection: Connection, payer: Keypa
 
         const rawTxns = bundleTransactions.map(item => bs58.encode(item.serialize()));
 
-        const { data: bundleRes } = await axios.post(`https://frankfurt.mainnet.block-engine.jito.wtf/api/v1/bundles`,
+        const { data: bundleRes } = await axios.post(`https://slc.mainnet.block-engine.jito.wtf/api/v1/bundles`,
             {
                 jsonrpc: "2.0",
                 id: 1,
@@ -261,7 +261,7 @@ export const createAndSendBundleWithSellEx = async (connection: Connection, paye
 
         const rawTxns = bundleTransactions.map(item => bs58.encode(item.serialize()));
 
-        const { data: bundleRes } = await axios.post(`https://frankfurt.mainnet.block-engine.jito.wtf/api/v1/bundles`,
+        const { data: bundleRes } = await axios.post(`https://slc.mainnet.block-engine.jito.wtf/api/v1/bundles`,
             {
                 jsonrpc: "2.0",
                 id: 1,
@@ -299,7 +299,7 @@ const checkBundle = async (connection: Connection, uuid: any, bundleTransactions
     while (1) {
         try {
             const response = await (
-                await fetch(`https://frankfurt.mainnet.block-engine.jito.wtf/api/v1/bundles`, {
+                await fetch(`https://slc.mainnet.block-engine.jito.wtf/api/v1/bundles`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
