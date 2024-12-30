@@ -27,11 +27,17 @@ export const sendSolsToSubWallets = async () => {
     console.log('Successfully read wallets...', keyArray.length);
     let mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(keyArray[0].private_key));;
     let subWallet: Keypair;
-    const instructions: TransactionInstruction[] = [];
     let idx = 0;
+    let ith = 1;
     try {
         while (idx < keyArray.length) {
-            for (let i = idx; i < idx + 10; i++) {
+            const instructions: TransactionInstruction[] = [];
+            for (let i = idx; i < idx + 5; i++) {
+                if (i >= keyArray.length) {
+                    console.log('Exceeds wallet number :', i);
+                    break;
+                }
+                    
                 const public_key = keyArray[i].public_key;
                 const private_key = keyArray[i].private_key;
 
@@ -43,18 +49,19 @@ export const sendSolsToSubWallets = async () => {
                 }
 
                 const balance = await connection.getBalance(subWallet.publicKey);
-                if (balance < 0.002 * LAMPORTS_PER_SOL) {
+                // if (balance < 0.002 * LAMPORTS_PER_SOL) {
                     instructions.push(
                         SystemProgram.transfer({
                             fromPubkey: mainWallet.publicKey,
                             toPubkey: subWallet.publicKey,
-                            lamports: 0.001 * LAMPORTS_PER_SOL,
+                            lamports: Number(process.env.distributeSolAmount) * LAMPORTS_PER_SOL,
                         })
                     );
-                }
+                // }
             }
 
             if (instructions.length > 0) {
+                console.log(`Distributing ${ith}th group wallets`);
                 const tx = await makeVersionedTransactions(
                     connection,
                     mainWallet,
@@ -65,8 +72,9 @@ export const sendSolsToSubWallets = async () => {
                 // console.log("res", res);
                 await createAndSendBundleEx(connection, mainWallet, [tx]);
             }
-            console.log('Step = ', idx);
-            idx += 10;
+            console.log(`Distributing ended for ${ith}th group wallets`);
+            idx += 5;
+            ith ++;
         }
 
     } catch (e) {

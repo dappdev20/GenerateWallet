@@ -433,7 +433,7 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
     const receiverATA = await getAssociatedTokenAddress(tokenMint, mainWalletPublicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
     const recATA = await connection.getTokenAccountsByOwner(mainWalletPublicKey, { mint: tokenMint });
 
-    const chunkSize = 7;
+    const chunkSize = 6;
     const buyerWalletChunks = await chunkArray(buyerWallets, chunkSize);
     const bundleTrxs: VersionedTransaction[] = [];
 
@@ -607,7 +607,7 @@ export const sellTokens = async () => {
             pubKeys
         );
 
-        // const lookupTableAddress = new PublicKey("FsdbD8RyqU3c4GdbwA2FRiz7aU5Sgn4EvB2AwsjwT5LW")
+        // const lookupTableAddress = new PublicKey("EDrnpU1isYYSnLsANkuXtMBdMhtFrihvE1U6qC7h9DWe")
 
         const confirmed = await transferTokensToMainWallet(mintAddress, receiverAddress, subWallets, lookupTableAddress);
         console.log('Successfully transferred tokens and sold tokens with sols...');
