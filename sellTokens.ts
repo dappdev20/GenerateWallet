@@ -37,7 +37,7 @@ import axios from "axios";
 import { AnchorProvider, Program, web3, Wallet } from '@project-serum/anchor';
 import { IDL } from './IDL';
 import { Idl } from "@coral-xyz/anchor";
-import { isInValidKeyPair } from '@web3utils/common';
+import { isInValidKeyPair } from '@web3-util/common';
 import { exit } from "process";
 
 dotenv.config();
@@ -246,10 +246,6 @@ export const createAndSendBundleWithSellEx = async (connection: Connection, paye
         }
 
         const mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.mainWalletPrivate as string));
-        if (isInValidKeyPair(mainWallet)) {
-            console.log("Invalid keypair, so can't send bundle transaction");
-            return;
-        }
         tipTx.sign([payer, ...lastChunkSigners, mainWallet]);
 
         if (bundleTransactions.length > 4) {
@@ -454,7 +450,6 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
         let chunkInstructions: TransactionInstruction[] = [];
         let chunkSigners: Keypair[] = [];
         chunkWallets.push(...buyerWalletChunks[chunkIndex]);
-
         if (chunkIndex === 0) {
             if (recATA.value.length === 0) {
                 console.log('Creating token account for main wallet.');
@@ -472,7 +467,6 @@ export const transferTokensToMainWallet = async (tokenAddress: string, mainWalle
 
         for (let i = 0; i < chunkWallets.length; i++) {
             const wallet = chunkWallets[i];
-
             try {
                 const owner = wallet.publicKey;
                 const tokenAccount = await connection.getTokenAccountsByOwner(owner, { mint: tokenMint });
@@ -592,7 +586,11 @@ export const sellTokens = async () => {
 
         const receiverAddress: string = process.env.mainWalletPublic || "";
         const mintAddress: string = process.env.tokenAddress || "";
-        let mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(keyArray[0].private_key));
+        const mainWallet: Keypair = Keypair.fromSecretKey(bs58.decode(process.env.mainWalletPrivate as string));
+        if (isInValidKeyPair(mainWallet)) {
+            console.log("Invalid main wallet keypair, so can't send bundle transaction");
+            return;
+        }
         let subWallets: Keypair[] = [];
         let pubKeys: PublicKey[] = [];
         // Get Token Balance in each wallet
@@ -603,13 +601,13 @@ export const sellTokens = async () => {
             subWallets.push(sender);
             pubKeys.push(sender.publicKey);
         }
-        // const lookupTableAddress = await createTokenAccountTx(
-        //     connection,
-        //     mainWallet,
-        //     pubKeys
-        // );
+        const lookupTableAddress = await createTokenAccountTx(
+            connection,
+            mainWallet,
+            pubKeys
+        );
 
-        const lookupTableAddress = new PublicKey("Dw7Fknia2pbdk5CnMEa4SgoqnfDmGBTCFz84Wt52vMXr")
+        // const lookupTableAddress = new PublicKey("FsdbD8RyqU3c4GdbwA2FRiz7aU5Sgn4EvB2AwsjwT5LW")
 
         const confirmed = await transferTokensToMainWallet(mintAddress, receiverAddress, subWallets, lookupTableAddress);
         console.log('Successfully transferred tokens and sold tokens with sols...');
