@@ -25,4 +25,4 @@ export const generateWallets = async (count: number) => {
     return wallets;
 };
 
-generateWallets(30);
+generateWallets(24);
