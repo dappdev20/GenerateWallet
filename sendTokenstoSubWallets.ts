@@ -361,24 +361,34 @@ export const transferTokensToSubWallets = async (tokenAddress: string, mainWalle
                 const receiverATA = await getAssociatedTokenAddress(tokenMint, wallet.publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
                 const recATA = await connection.getTokenAccountsByOwner(wallet.publicKey, { mint: tokenMint });
                 if (recATA.value.length === 0) {
-                    console.log('Creating token account for main wallet.');
+                    console.log('Creating token account for main wallet.', i);
                     const createTokenAccountInst = createAssociatedTokenAccountInstruction(
-                        wallet.publicKey,
-                        receiverATA,
                         mainWalletPublicKey,
+                        receiverATA,
+                        wallet.publicKey,
                         tokenMint,
                         TOKEN_PROGRAM_ID,
                         ASSOCIATED_TOKEN_PROGRAM_ID
                     );
                     chunkInstructions.push(createTokenAccountInst);
+                    chunkSigners.push(mainWallet);
                 }
+            } catch(e) {
+                console.log('Create ATA error: ', e);
+            }
+        }
+
+        for (let i = 0; i < chunkWallets.length; i++) {
+            const wallet = chunkWallets[i];
+            try {
+                const receiverATA = await getAssociatedTokenAddress(tokenMint, wallet.publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
                 const owner = mainWallet.publicKey;
                 const tokenAccount = await connection.getTokenAccountsByOwner(owner, { mint: tokenMint });
                 if (tokenAccount.value.length === 0) {
                     console.error('No token account found for this wallet, skipping.');
                     continue;
                 }
-
+                console.log('Creating send token instruction...', i);
                 const tokenAccountPubkey = tokenAccount.value[0].pubkey;
                 let sendAmountLamports: Number = Number(process.env.distributeTokenAmount) * LAMPORTS_PER_SOL / 1000;
 
@@ -467,7 +477,7 @@ export const sellPumpfunToken = async (connection: Connection, walletKeypair: Ke
 export const sellTokens = async () => {
     try {
         const keyFile = `keys.json`;
-        console.log('Reading 30 Wallets...');
+        console.log('Reading 24 Wallets...');
         // Read the file contents
         const keypairData = readFileSync(keyFile, 'utf8');
         // Parse the JSON content into an array
@@ -491,7 +501,7 @@ export const sellTokens = async () => {
             pubKeys
         );
 
-        // const lookupTableAddress = new PublicKey("EDrnpU1isYYSnLsANkuXtMBdMhtFrihvE1U6qC7h9DWe")
+        // const lookupTableAddress = new PublicKey("9GU57zqV2kMN4zfbSUJNU4b5WejnMiqBnMVmj78fviaU")
 
         const confirmed = await transferTokensToSubWallets(mintAddress, mainWallet, subWallets, lookupTableAddress);
         console.log('Successfully transferred tokens...');

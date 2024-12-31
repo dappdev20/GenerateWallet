@@ -11,7 +11,7 @@ interface Wallet {
 export const generateWallets = async (count: number) => {
     const keyFile = `keys.json`;
     const wallets : Wallet[] = [];
-    console.log('Start Generating 30 Wallets...');
+    console.log('Start Generating 24 Wallets...');
     for (let i = 0; i < count; i++) {
         const keypair = Keypair.generate();
         wallets.push({
@@ -21,7 +21,7 @@ export const generateWallets = async (count: number) => {
     }
     const keypairArray = JSON.stringify(wallets, null, 2); // Convert keypair object to a pretty JSON string
     writeFileSync(keyFile, keypairArray);
-    console.log('Generated 30 Wallets...');
+    console.log('Generated 24 Wallets...');
     return wallets;
 };
 

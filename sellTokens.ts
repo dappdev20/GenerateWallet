@@ -577,7 +577,7 @@ export const sellPumpfunToken = async (connection: Connection, walletKeypair: Ke
 export const sellTokens = async () => {
     try {
         const keyFile = `keys.json`;
-        console.log('Reading 30 Wallets...');
+        console.log('Reading 24 Wallets...');
         // Read the file contents
         const keypairData = readFileSync(keyFile, 'utf8');
         // Parse the JSON content into an array
